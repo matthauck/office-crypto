@@ -1,0 +1,10 @@
+[package]
+authors = ["Matt Hauck <matthauck@gmail.com>"]
+name = "office-crypto"
+version = "0.1.0"
+
+[dependencies]
+RustyXML = "0.1.1"
+ring = "0.6.1"
+rust-crypto = "0.2.36"
+rustc-serialize = "0.3"

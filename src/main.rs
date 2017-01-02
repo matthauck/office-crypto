@@ -24,18 +24,22 @@ fn main() {
     }
 
     for key_info in &encrypted_keys {
-        let block_keys = office_crypto::derive_keys(password.as_str(), key_info);
-        match office_crypto::try_decrypt(&block_keys, key_info) {
-            Ok(result) => {
-                if result {
-                    println!("Success!");
-                    std::process::exit(0);
-                }
-            }
-            Err(e) => println!("Error checking key: {}", e),
+        if try_single_pass(password.as_str(), key_info) {
+            println!("Success!");
+            std::process::exit(0);
         }
     }
 
     println!("Fail!");
     std::process::exit(1);
+}
+
+fn try_single_pass(password: &str, key_info: &office_doc::EncryptedKeyInfo) -> bool {
+    let block_keys = office_crypto::derive_keys(password, key_info);
+    match office_crypto::try_decrypt(&block_keys, key_info) {
+        Ok(result) => return result,
+        Err(e) => println!("Error checking key: {}", e),
+    }
+
+    false
 }

@@ -1,24 +1,21 @@
 extern crate crypto;
 extern crate ring;
 
-use office_doc;
+use office_doc::EncryptedKeyInfo;
 
 // https://msdn.microsoft.com/en-us/library/dd950165(v=office.12).aspx
 const BLOCK_KEY_VERIFIER_HASH_INPUT: [u8; 8] = [0xfe, 0xa7, 0xd2, 0x76, 0x3b, 0x4b, 0x9e, 0x79];
 const BLOCK_KEY_VERIFIER_HASH_VALUE: [u8; 8] = [0xd7, 0xaa, 0x0f, 0x6d, 0x30, 0x61, 0x34, 0x4e];
 
-pub fn verify(password: &str, key_info: &office_doc::EncryptedKeyInfo) -> Result<bool, String> {
-    let pass_hash = hash_pass(&password, &key_info.salt, key_info.spin_count);
+#[derive(Hash, Eq, PartialEq)]
+pub struct BlockKeys {
+    pub hash_input_key: Vec<u8>,
+    pub hash_value_key: Vec<u8>,
+}
 
-    let hash_input_key = derive_key(&pass_hash,
-                                    &BLOCK_KEY_VERIFIER_HASH_INPUT,
-                                    key_info.key_bits);
-    let hash_value_key = derive_key(&pass_hash,
-                                    &BLOCK_KEY_VERIFIER_HASH_VALUE,
-                                    key_info.key_bits);
-
+pub fn try_decrypt(block_keys: &BlockKeys, key_info: &EncryptedKeyInfo) -> Result<bool, String> {
     let verifier_hash_input = match decrypt(&key_info.encrypted_verifier_hash_input,
-                                            &hash_input_key,
+                                            &block_keys.hash_input_key,
                                             &key_info.salt) {
         Ok(data) => data,
         Err(e) => return Err(format!("Error decrypting encrypted_verifier_hash_input, {:?}", e)),
@@ -27,7 +24,7 @@ pub fn verify(password: &str, key_info: &office_doc::EncryptedKeyInfo) -> Result
     let verifier_hash_input_hash = ring::digest::digest(&ring::digest::SHA512,
                                                         verifier_hash_input.as_slice());
     let verifier_hash = match decrypt(&key_info.encrypted_verifier_hash_value,
-                                      &hash_value_key,
+                                      &block_keys.hash_value_key,
                                       &key_info.salt) {
         Ok(data) => data,
         Err(e) => {
@@ -36,6 +33,20 @@ pub fn verify(password: &str, key_info: &office_doc::EncryptedKeyInfo) -> Result
     };
 
     return Ok(verifier_hash_input_hash.as_ref() == verifier_hash.as_slice());
+}
+
+pub fn derive_keys(password: &str, key_info: &EncryptedKeyInfo) -> BlockKeys {
+    let pass_hash = hash_pass(&password, &key_info.salt, key_info.spin_count);
+
+    BlockKeys {
+        hash_input_key: derive_key(&pass_hash,
+                                   &BLOCK_KEY_VERIFIER_HASH_INPUT,
+                                   key_info.key_bits),
+
+        hash_value_key: derive_key(&pass_hash,
+                                   &BLOCK_KEY_VERIFIER_HASH_VALUE,
+                                   key_info.key_bits),
+    }
 }
 
 fn hash_pass(pass: &str, salt: &Vec<u8>, count: u32) -> Vec<u8> {

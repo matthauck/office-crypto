@@ -19,11 +19,13 @@ fn main() {
     }
 
     if encrypted_keys.len() > 1 {
-        println!("Warning: Found {} keys. Any match will count as success.", encrypted_keys.len());
+        println!("Warning: Found {} keys. Any match will count as success.",
+                 encrypted_keys.len());
     }
 
-    for key in &encrypted_keys {
-        match office_crypto::verify(password.as_str(), key) {
+    for key_info in &encrypted_keys {
+        let block_keys = office_crypto::derive_keys(password.as_str(), key_info);
+        match office_crypto::try_decrypt(&block_keys, key_info) {
             Ok(result) => {
                 if result {
                     println!("Success!");

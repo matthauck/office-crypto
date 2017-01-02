@@ -1,11 +1,30 @@
+extern crate clap;
+
 mod office_crypto;
 mod office_doc;
 
-fn main() {
-    let file = std::env::args().nth(1).unwrap();
-    let password = std::env::args().nth(2).unwrap();
+use clap::{Arg, App};
 
-    let encrypted_keys = match office_doc::parse_doc(file.as_str()) {
+fn main() {
+    let args = App::new("office-crypto")
+        .arg(Arg::with_name("input")
+            .short("i")
+            .long("input")
+            .value_name("file")
+            .help("Office document file")
+            .required(true))
+        .arg(Arg::with_name("password")
+            .short("p")
+            .long("password")
+            .value_name("password")
+            .help("Password to guess")
+            .required(true))
+        .get_matches();
+
+    let file = args.value_of("input").unwrap();
+    let password = args.value_of("password").unwrap();
+
+    let encrypted_keys = match office_doc::parse_doc(file) {
         Ok(data) => data,
         Err(e) => {
             println!("Error parsing office doc: {}", e);
@@ -24,7 +43,7 @@ fn main() {
     }
 
     for key_info in &encrypted_keys {
-        if try_single_pass(password.as_str(), key_info) {
+        if try_single_pass(password, key_info) {
             println!("Success!");
             std::process::exit(0);
         }

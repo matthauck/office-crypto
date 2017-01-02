@@ -4,6 +4,7 @@ mod office_crypto;
 mod office_doc;
 
 use clap::{Arg, App};
+use std::collections::HashSet;
 
 fn main() {
     let args = App::new("office-crypto")
@@ -24,6 +25,19 @@ fn main() {
     let file = args.value_of("input").unwrap();
     let password = args.value_of("password").unwrap();
 
+    let key_infos = get_key_infos(file);
+    for key_info in &key_infos {
+        if try_single_pass(password, key_info) {
+            println!("Success!");
+            std::process::exit(0);
+        }
+    }
+
+    println!("Fail!");
+    std::process::exit(1);
+}
+
+fn get_key_infos(file: &str) -> HashSet<office_doc::EncryptedKeyInfo> {
     let encrypted_keys = match office_doc::parse_doc(file) {
         Ok(data) => data,
         Err(e) => {
@@ -42,15 +56,7 @@ fn main() {
                  encrypted_keys.len());
     }
 
-    for key_info in &encrypted_keys {
-        if try_single_pass(password, key_info) {
-            println!("Success!");
-            std::process::exit(0);
-        }
-    }
-
-    println!("Fail!");
-    std::process::exit(1);
+    encrypted_keys
 }
 
 fn try_single_pass(password: &str, key_info: &office_doc::EncryptedKeyInfo) -> bool {

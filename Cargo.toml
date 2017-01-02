@@ -6,6 +6,7 @@ version = "0.1.0"
 [dependencies]
 RustyXML = "0.1.1"
 clap = "2.19.3"
+num_cpus = "1.2.0"
 ring = "0.6.1"
 rust-crypto = "0.2.36"
 rustc-serialize = "0.3"

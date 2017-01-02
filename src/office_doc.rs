@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::collections::HashSet;
 
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub struct EncryptedKeyInfo {
     pub salt: Vec<u8>,
     pub encrypted_verifier_hash_input: Vec<u8>,

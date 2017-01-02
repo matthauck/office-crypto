@@ -1,4 +1,5 @@
 extern crate clap;
+extern crate num_cpus;
 
 mod office_crypto;
 mod office_doc;
@@ -6,7 +7,11 @@ mod office_doc;
 use clap::{Arg, App};
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
+use std::thread;
+use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex};
+
 
 fn main() {
     let args = App::new("office-crypto")
@@ -44,9 +49,9 @@ fn main() {
                 std::process::exit(1);
             }
             Ok(passwords) => {
-                for key_info in &key_infos {
-                    if try_many_passwords(&passwords, key_info) {
-                        println!("Success!");
+                for key_info in key_infos {
+                    if let Some(password) = try_many_passwords(passwords.clone(), key_info) {
+                        println!("Success! '{}'", password);
                         std::process::exit(0);
                     }
                 }
@@ -103,12 +108,59 @@ fn try_single_pass(password: &str, key_info: &office_doc::EncryptedKeyInfo) -> b
     false
 }
 
-fn try_many_passwords(passwords: &Vec<String>, key_info: &office_doc::EncryptedKeyInfo) -> bool {
-    for password in passwords {
-        if try_single_pass(password, key_info) {
-            return true;
+fn try_many_passwords(passwords: Vec<String>, key_info: office_doc::EncryptedKeyInfo) -> Option<String> {
+    let (tx_result, rx_result) = channel();
+    let passwords_num = passwords.len();
+    let passwords_locked = Arc::new(Mutex::new(passwords));
+    let running = Arc::new(Mutex::new(true));
+
+    let mut threads = vec![];
+
+    for _ in 0..num_cpus::get() {
+        let tx_result = tx_result.clone();
+        let key_info_ref = key_info.clone();
+        let passwords_locked = passwords_locked.clone();
+        let running = running.clone();
+        threads.push(thread::spawn(move || {
+            let is_running;
+            {
+                is_running = *running.lock().unwrap();
+            }
+            while is_running {
+                let password: Option<String>;
+                {
+                    let mut p = passwords_locked.lock().unwrap();
+                    password = p.pop();
+                }
+                match password {
+                    None => break,
+                    Some(password) => {
+                        print!(".");
+                        std::io::stdout().flush().unwrap();
+
+                        let success = try_single_pass(password.as_str(), &key_info_ref);
+                        tx_result.send((password, success)).unwrap();
+                    }
+                }
+            }
+        }));
+    }
+
+    let mut the_pass: Option<String> = None;
+    for _ in 0..passwords_num {
+        if let Ok(result) = rx_result.recv() {
+            let (password, success) = result;
+            if success {
+                *running.lock().unwrap() = false;
+                the_pass = Some(password);
+                break;
+            }
         }
     }
 
-    false
+    for t in threads {
+        t.join().unwrap();
+    }
+
+    the_pass
 }

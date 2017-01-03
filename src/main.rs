@@ -111,6 +111,9 @@ fn try_single_pass(password: &str, key_info: &office_doc::EncryptedKeyInfo) -> b
 fn try_many_passwords(passwords: Vec<String>, key_info: office_doc::EncryptedKeyInfo) -> Option<String> {
     let (tx_result, rx_result) = channel();
     let passwords_num = passwords.len();
+    let mut passwords = passwords;
+    // reverse password so we can pop off the end quickly but still search in the same order given
+    passwords.reverse();
     let passwords_locked = Arc::new(Mutex::new(passwords));
     let running = Arc::new(Mutex::new(true));
 
@@ -135,9 +138,6 @@ fn try_many_passwords(passwords: Vec<String>, key_info: office_doc::EncryptedKey
                 match password {
                     None => break,
                     Some(password) => {
-                        print!(".");
-                        std::io::stdout().flush().unwrap();
-
                         let success = try_single_pass(password.as_str(), &key_info_ref);
                         tx_result.send((password, success)).unwrap();
                     }
@@ -148,6 +148,9 @@ fn try_many_passwords(passwords: Vec<String>, key_info: office_doc::EncryptedKey
 
     let mut the_pass: Option<String> = None;
     for _ in 0..passwords_num {
+        print!(".");
+        std::io::stdout().flush().unwrap();
+
         if let Ok(result) = rx_result.recv() {
             let (password, success) = result;
             if success {

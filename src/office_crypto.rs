@@ -14,33 +14,14 @@ pub struct BlockKeys {
 }
 
 pub fn try_decrypt(block_keys: &BlockKeys, key_info: &EncryptedKeyInfo) -> Result<bool, String> {
-    let mut verifier_hash_input = match decrypt(&key_info.encrypted_verifier_hash_input,
-                                                &block_keys.hash_input_key,
-                                                &key_info.salt,
-                                                &key_info.key_bits) {
-        Ok(data) => data,
-        Err(e) => return Err(format!("Error decrypting encrypted_verifier_hash_input, {:?}", e)),
-    };
-    verifier_hash_input.truncate(key_info.hash_size as usize);
-    let verifier_hash_input = verifier_hash_input;
+    let verifier_hash_input = try!(decrypt_and_truncate(&key_info.encrypted_verifier_hash_input, &block_keys.hash_input_key, &key_info));
+    let verifier_hash_value = try!(decrypt_and_truncate(&key_info.encrypted_verifier_hash_value, &block_keys.hash_value_key, &key_info));
 
     let mut ctx = new_hash(&key_info.hash_algorithm);
     ctx.update(verifier_hash_input.as_slice());
     let verifier_hash_input_hash = ctx.finish();
 
-    let mut verifier_hash = match decrypt(&key_info.encrypted_verifier_hash_value,
-                                          &block_keys.hash_value_key,
-                                          &key_info.salt,
-                                          &key_info.key_bits) {
-        Ok(data) => data,
-        Err(e) => {
-            return Err(format!("Error decrypting encrypted_verifier_hash_value: {:?}", e));
-        }
-    };
-    verifier_hash.truncate(key_info.hash_size as usize);
-    let verifier_hash = verifier_hash;
-
-    return Ok(verifier_hash_input_hash.as_ref() == verifier_hash.as_slice());
+    return Ok(verifier_hash_input_hash.as_ref() == verifier_hash_value.as_slice());
 }
 
 pub fn derive_keys(password: &str, key_info: &EncryptedKeyInfo) -> BlockKeys {
@@ -133,6 +114,16 @@ fn derive_key(base_hash: &[u8],
     }
 
     key
+}
+
+fn decrypt_and_truncate(encrypted_data: &[u8], block_key: &[u8], key_info: &EncryptedKeyInfo) -> Result<Vec<u8>, String> {
+    let mut value = match decrypt(encrypted_data, block_key, &key_info.salt, &key_info.key_bits) {
+        Ok(data) => data,
+        Err(e) => return Err(format!("Error decrypting data: {:?}", e)),
+    };
+    value.truncate(key_info.hash_size as usize);
+
+    Ok(value)
 }
 
 fn decrypt(encrypted_data: &[u8],

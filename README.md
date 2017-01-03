@@ -46,4 +46,4 @@ Was greatly helped by [herumi/msoffice](https://github.com/herumi/msoffice) whic
 License
 -------
 
-This project is licensed under the terms of the [MIT license](LICENSE)
+This project is licensed under the terms of the [MIT license](LICENSE.md)

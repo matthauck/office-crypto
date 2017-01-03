@@ -14,42 +14,69 @@ pub struct BlockKeys {
 }
 
 pub fn try_decrypt(block_keys: &BlockKeys, key_info: &EncryptedKeyInfo) -> Result<bool, String> {
-    let verifier_hash_input = match decrypt(&key_info.encrypted_verifier_hash_input,
-                                            &block_keys.hash_input_key,
-                                            &key_info.salt) {
+    let mut verifier_hash_input = match decrypt(&key_info.encrypted_verifier_hash_input,
+                                                &block_keys.hash_input_key,
+                                                &key_info.salt,
+                                                &key_info.key_bits) {
         Ok(data) => data,
         Err(e) => return Err(format!("Error decrypting encrypted_verifier_hash_input, {:?}", e)),
     };
+    verifier_hash_input.truncate(key_info.hash_size as usize);
+    let verifier_hash_input = verifier_hash_input;
 
-    let verifier_hash_input_hash = ring::digest::digest(&ring::digest::SHA512,
-                                                        verifier_hash_input.as_slice());
-    let verifier_hash = match decrypt(&key_info.encrypted_verifier_hash_value,
-                                      &block_keys.hash_value_key,
-                                      &key_info.salt) {
+    let mut ctx = new_hash(&key_info.hash_algorithm);
+    ctx.update(verifier_hash_input.as_slice());
+    let verifier_hash_input_hash = ctx.finish();
+
+    let mut verifier_hash = match decrypt(&key_info.encrypted_verifier_hash_value,
+                                          &block_keys.hash_value_key,
+                                          &key_info.salt,
+                                          &key_info.key_bits) {
         Ok(data) => data,
         Err(e) => {
             return Err(format!("Error decrypting encrypted_verifier_hash_value: {:?}", e));
         }
     };
+    verifier_hash.truncate(key_info.hash_size as usize);
+    let verifier_hash = verifier_hash;
 
     return Ok(verifier_hash_input_hash.as_ref() == verifier_hash.as_slice());
 }
 
 pub fn derive_keys(password: &str, key_info: &EncryptedKeyInfo) -> BlockKeys {
-    let pass_hash = hash_pass(&password, &key_info.salt, key_info.spin_count);
+    let pass_hash = hash_pass(&password,
+                              &key_info.salt,
+                              key_info.spin_count,
+                              &key_info.hash_algorithm);
 
     BlockKeys {
         hash_input_key: derive_key(&pass_hash,
                                    &BLOCK_KEY_VERIFIER_HASH_INPUT,
-                                   key_info.key_bits),
+                                   key_info.key_bits,
+                                   &key_info.hash_algorithm),
 
         hash_value_key: derive_key(&pass_hash,
                                    &BLOCK_KEY_VERIFIER_HASH_VALUE,
-                                   key_info.key_bits),
+                                   key_info.key_bits,
+                                   &key_info.hash_algorithm),
     }
 }
 
-fn hash_pass(pass: &str, salt: &Vec<u8>, count: u32) -> Vec<u8> {
+fn new_hash(hash_algorithm: &String) -> ring::digest::Context {
+    if hash_algorithm == "SHA512" {
+        ring::digest::Context::new(&ring::digest::SHA512)
+    } else if hash_algorithm == "SHA384" {
+        ring::digest::Context::new(&ring::digest::SHA384)
+    } else if hash_algorithm == "SHA256" {
+        ring::digest::Context::new(&ring::digest::SHA256)
+    } else if hash_algorithm == "SHA1" {
+        ring::digest::Context::new(&ring::digest::SHA1)
+    } else {
+        panic!("Unknown hash algorithm: {}", hash_algorithm);
+    }
+}
+
+fn hash_pass(pass: &str, salt: &Vec<u8>, count: u32, hash_algorithm: &String) -> Vec<u8> {
     let mut pass_bytes1: Vec<u8> = Vec::new();
     pass_bytes1.extend_from_slice(&pass.as_bytes());
 
@@ -59,7 +86,7 @@ fn hash_pass(pass: &str, salt: &Vec<u8>, count: u32) -> Vec<u8> {
         pass_bytes2.push(0);
     }
 
-    let mut ctx = ring::digest::Context::new(&ring::digest::SHA512);
+    let mut ctx = new_hash(hash_algorithm);
 
     ctx.update(salt.as_slice());
     ctx.update(pass_bytes2.as_slice());
@@ -73,7 +100,7 @@ fn hash_pass(pass: &str, salt: &Vec<u8>, count: u32) -> Vec<u8> {
                          ((i >> 16) & 0x000000FF) as u8,
                          ((i >> 24) & 0x000000FF) as u8];
 
-        let mut ctx = ring::digest::Context::new(&ring::digest::SHA512);
+        let mut ctx = new_hash(hash_algorithm);
         ctx.update(i_str.as_slice());
         ctx.update(hash.as_slice());
 
@@ -84,8 +111,12 @@ fn hash_pass(pass: &str, salt: &Vec<u8>, count: u32) -> Vec<u8> {
     hash
 }
 
-fn derive_key(base_hash: &[u8], block_key: &[u8], key_bits: u32) -> Vec<u8> {
-    let mut ctx = ring::digest::Context::new(&ring::digest::SHA512);
+fn derive_key(base_hash: &[u8],
+              block_key: &[u8],
+              key_bits: u32,
+              hash_algorithm: &String)
+              -> Vec<u8> {
+    let mut ctx = new_hash(hash_algorithm);
     ctx.update(base_hash);
     ctx.update(block_key);
 
@@ -106,13 +137,22 @@ fn derive_key(base_hash: &[u8], block_key: &[u8], key_bits: u32) -> Vec<u8> {
 
 fn decrypt(encrypted_data: &[u8],
            key: &[u8],
-           iv: &[u8])
+           iv: &[u8],
+           key_bits: &u32)
            -> Result<Vec<u8>, crypto::symmetriccipher::SymmetricCipherError> {
     use self::crypto::{buffer, aes, blockmodes};
     use self::crypto::buffer::{ReadBuffer, WriteBuffer, BufferResult};
 
-    let mut decryptor =
-        aes::cbc_decryptor(aes::KeySize::KeySize256, key, iv, blockmodes::NoPadding);
+    let key_size;
+    if *key_bits == 256 {
+        key_size = aes::KeySize::KeySize256;
+    } else if *key_bits == 128 {
+        key_size = aes::KeySize::KeySize128;
+    } else {
+        panic!("Unknown key size: {}", key_bits);
+    }
+
+    let mut decryptor = aes::cbc_decryptor(key_size, key, iv, blockmodes::NoPadding);
 
     let mut final_result = Vec::<u8>::new();
     let mut read_buffer = buffer::RefReadBuffer::new(encrypted_data);

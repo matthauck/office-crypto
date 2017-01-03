@@ -14,8 +14,9 @@ pub struct EncryptedKeyInfo {
     pub encrypted_verifier_hash_value: Vec<u8>,
     pub spin_count: u32,
     pub key_bits: u32,
+    pub hash_algorithm: String,
+    pub hash_size: u32,
 }
-
 
 // If we wanted to be fancy, we could write a parser for the MS Compound File Binary (CFB) format,
 // but for our purposes, just finding the right XML blobs is good enough!
@@ -86,10 +87,15 @@ pub fn parse_doc(path: &str) -> Result<HashSet<EncryptedKeyInfo>, String> {
 }
 
 fn parse_key(element: Element) -> EncryptedKeyInfo {
+    let get_string = |attr: &str| {
+        match element.attributes.get(&(String::from(attr), None)) {
+            Some(s) => s.clone(),
+            None => String::new()
+        }
+    };
+
     let get_base64 = |attr: &str| {
-        element.attributes
-            .get(&(String::from(attr), None))
-            .unwrap_or(&String::new())
+        get_string(attr)
             .from_base64()
             .unwrap_or(vec![])
     };
@@ -108,5 +114,7 @@ fn parse_key(element: Element) -> EncryptedKeyInfo {
         encrypted_verifier_hash_value: get_base64("encryptedVerifierHashValue"),
         spin_count: get_int("spinCount"),
         key_bits: get_int("keyBits"),
+        hash_algorithm: get_string("hashAlgorithm"),
+        hash_size: get_int("hashSize"),
     }
 }

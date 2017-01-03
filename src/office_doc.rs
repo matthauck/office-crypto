@@ -90,7 +90,7 @@ fn parse_key(element: Element) -> EncryptedKeyInfo {
     let get_string = |attr: &str| {
         match element.attributes.get(&(String::from(attr), None)) {
             Some(s) => s.clone(),
-            None => String::new()
+            None => String::new(),
         }
     };
 

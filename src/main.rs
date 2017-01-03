@@ -108,7 +108,9 @@ fn try_single_pass(password: &str, key_info: &office_doc::EncryptedKeyInfo) -> b
     false
 }
 
-fn try_many_passwords(passwords: Vec<String>, key_info: office_doc::EncryptedKeyInfo) -> Option<String> {
+fn try_many_passwords(passwords: Vec<String>,
+                      key_info: office_doc::EncryptedKeyInfo)
+                      -> Option<String> {
     let (tx_result, rx_result) = channel();
     let passwords_num = passwords.len();
     let mut passwords = passwords;

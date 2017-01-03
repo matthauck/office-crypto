@@ -125,11 +125,11 @@ fn try_many_passwords(passwords: Vec<String>, key_info: office_doc::EncryptedKey
         let passwords_locked = passwords_locked.clone();
         let running = running.clone();
         threads.push(thread::spawn(move || {
-            let is_running;
-            {
-                is_running = *running.lock().unwrap();
-            }
-            while is_running {
+            loop {
+                if !*running.lock().unwrap() {
+                    break;
+                }
+
                 let password: Option<String>;
                 {
                     let mut p = passwords_locked.lock().unwrap();
